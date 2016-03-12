@@ -9,6 +9,8 @@ import java.nio.file.DirectoryStream.Filter;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -68,6 +70,7 @@ public class M3u {
 		private final FileWriter writer;
 		private int dirCounter;
 		private int fileCounter;
+		private int filesRenamed;
 
 		public Producer(String dir) throws IOException, FileNotFoundException {
 			rootPath = resolvePath(dir);
@@ -84,7 +87,7 @@ public class M3u {
 		public void run() {
 			try {
 				processDir(rootPath, "");
-				System.out.println(String.format("%s: processed %d dirs, %d files", rootPath, dirCounter, fileCounter));
+				System.out.println(String.format("%s: processed %d dirs, %d files [%d renamed]", rootPath, dirCounter, fileCounter, filesRenamed));
 			} catch (IOException e) {
 				System.out.println(rootPath + ": failure");
 				e.printStackTrace();
@@ -109,16 +112,94 @@ public class M3u {
 			//iterate files
 			try (final DirectoryStream<Path> stream = Files.newDirectoryStream(p, MP3_FILTER)) {
 				for (Path entry: stream) {
+					printLine(prefix + renameToLatin(entry));
 					fileCounter++;
-					printLine(prefix + entry.getFileName());
 				}
 			}
-			
 		}
 		
+		private String renameToLatin(Path origPath) throws IOException {
+			String origName = origPath.getFileName().toString();
+			
+			StringBuilder sb = new StringBuilder();
+			for (Character c : origName.toCharArray()) {
+				sb.append(LatinConvertor.INSTANCE.convert(c));
+			}
+			String newName = sb.toString();
+			if (newName.equals(origName)) {
+				return origName;
+			}
+			
+//			System.out.println(String.format("%s -> %s", origName, sb.toString()));
+			Files.move(origPath, origPath.getParent().resolve(newName));
+			
+			filesRenamed++;
+			return newName;
+		}
+
 		private void printLine(String line) throws IOException {
 //			System.out.println(line);
 			writer.write(line + "\n");
+		}
+	}
+	
+	public static class LatinConvertor {
+		public static final LatinConvertor INSTANCE = new LatinConvertor();
+		public static final char[][] map = {
+				{'à', 'a'},
+				{'á', 'b'},
+				{'â', 'v'},
+				{'ã', 'g'},
+				{'ä', 'd'},
+				{'å', 'e'},
+				{'æ', 'j'},
+				{'ç', 'z'},
+				{'è', 'i'},
+				{'é', 'i'},
+				{'ê', 'k'},
+				{'ë', 'l'},
+				{'ì', 'm'},
+				{'í', 'n'},
+				{'î', 'o'},
+				{'ï', 'p'},
+				{'ð', 'r'},
+				{'ñ', 's'},
+				{'ò', 't'},
+				{'ó', 'u'},
+				{'ô', 'f'},
+				{'õ', 'h'},
+				{'ö', 'c'},
+				{'÷', '4'},
+				{'ø', 's'},
+				{'ù', 's'},
+				{'ú', '`'},
+				{'û', 'y'},
+				{'ü', '`'},
+				{'ý', 'e'},
+				{'þ', 'u'},
+				{'ÿ', 'a'},
+				};
+		
+		public static final Map<Character, Character> mapmap = new HashMap<>();
+		static {
+			final int cyrrCapShift = 'Á' - 'á';
+			final int latCapShift = 'D' - 'd';
+			for (int i = 0; i < map.length; i++) {
+				mapmap.put(map[i][0], map[i][1]);
+				
+				//add CAPITALS
+				mapmap.put(Character.valueOf((char)(map[i][0] + cyrrCapShift)), Character.valueOf((char)(map[i][1] + latCapShift)));
+			}
+		}
+		
+		public Character convert(final Character c) {
+			Character res = c;
+			
+			Character repl = mapmap.get(c);
+			if (repl != null) {
+				res = repl;
+			}
+			return res;
 		}
 	}
 }
